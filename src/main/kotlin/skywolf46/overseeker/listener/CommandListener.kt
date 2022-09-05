@@ -4,6 +4,8 @@ import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.entities.TextChannel
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import net.dv8tion.jda.api.interactions.components.Modal
+import net.dv8tion.jda.api.interactions.components.selections.SelectMenu
 import net.dv8tion.jda.api.utils.messages.MessageCreateData
 import skywolf46.overseeker.util.compressIsk
 import skywolf46.overseeker.zkillboard.KillBoardFetcher
@@ -79,6 +81,31 @@ class CommandListener : ListenerAdapter() {
             "clr" -> {
                 tempChannel = null
                 event.reply("Killmail broadcasting stopped").queue()
+            }
+            "filter_condition" -> {
+                SelectMenu.create("os_filter_selection")
+                    .setPlaceholder("What filter do you want for this channel?")
+                    .setRequiredRange(0, 4)
+                    .addOption("Fleet KillMail", "flt-kill", "KillMails from 2 or more attackers.")
+                    .addOption("Solo KillMail", "solo-kill", "KillMails from honorable battle.")
+                    .addOption("Awoxed KillMail", "awox-kill", "My back hurts! KillMails from friendly fire.")
+                    .addOption(
+                        "NPC KillMail",
+                        "npc-kill",
+                        "The power of pirates! KillMails from Non-Player Characters."
+                    )
+                    .addOption(
+                        "Police KillMail",
+                        "police-kill",
+                        "Concorded! KillMails from police on high-sec."
+                    )
+                    .build().apply {
+                        event.reply("Choose channel killmail filter")
+                            .setEphemeral(true)
+                            .addActionRow(this)
+                            .queue()
+
+                    }
             }
         }
     }
