@@ -44,12 +44,8 @@ object KillBoardFetcher {
                     while (true) {
                         val msg = incoming.receive() as? Frame.Text ?: continue
                         val data = KillData(parser.parse(msg.readText()) as JSONObject)
-                        println("Incoming killmail: ${data.victim.characterId} (Proceed in ${data.processingTime}ms)")
                         resolver.execute {
-                            val time = System.currentTimeMillis()
-                            println("Resolving started..")
                             val resolved = data.resolveAll()
-                            println("Resolving completed on ${System.currentTimeMillis() - time}ms")
                             listeners.forEach {
                                 it(resolved)
                             }
@@ -57,6 +53,9 @@ object KillBoardFetcher {
                     }
                 }
             }
+            println("Channel connection ended - Retry after 100ms")
+            Thread.sleep(100L)
+            configureWebSocket(client)
         }
     }
 
