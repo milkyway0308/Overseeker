@@ -24,17 +24,14 @@ object EsiNameFetcher {
     }
 
     suspend fun fetchNames(vararg id: Long) {
-        println("Fetching for ${id.size} ids")
         val toResolve = id.filter { it != -1L && cachedNames[it] == null }.distinct()
         if (toResolve.isEmpty())
             return
         client.post(ESI_GET_NAME) {
             setBody(JSONArray().apply {
                 addAll(toResolve)
-                println("Current body: ${toJSONString()}")
             }.toJSONString())
         }.bodyAsText().apply {
-            println("Fetch complete - ${this}")
             val array = parser.parse(this)
             if (array !is JSONArray)
                 return

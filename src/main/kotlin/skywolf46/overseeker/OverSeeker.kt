@@ -88,6 +88,7 @@ object OverSeeker {
     private fun initCommands(prop: Properties, jda: JDA) {
         jda.upsertCommand("start", "Test Command").queue()
         jda.upsertCommand("clr", "Test Command").queue()
+        jda.upsertCommand("filter_condition", "Test Command").queue()
         jda.upsertCommand("overseek", "해당 플레이어에 대한 플릿 킬메일을 수집합니다.").queue()
         jda.upsertCommand("os-config", "오버시커 어플리케이션 서버 설정을 수정합니다.").queue()
         jda.upsertCommand("analyze", "수집된 킬메일을 분석합니다.").queue()

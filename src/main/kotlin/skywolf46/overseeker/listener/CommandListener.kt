@@ -16,9 +16,7 @@ class CommandListener : ListenerAdapter() {
 
     init {
         KillBoardFetcher.registerListener {
-            println("Channel null")
             if (tempChannel == null) return@registerListener
-            println("Sended")
             tempChannel!!.sendMessage(MessageCreateData.fromEmbeds(EmbedBuilder().apply {
                 setColor(Color.RED)
                 when {
