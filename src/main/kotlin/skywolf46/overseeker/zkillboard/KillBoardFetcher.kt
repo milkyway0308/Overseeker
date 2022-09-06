@@ -37,7 +37,7 @@ object KillBoardFetcher {
 
     private fun configureWebSocket(client: HttpClient) {
         runner.execute {
-            kotlin.runCatching {
+            runCatching {
                 runBlocking {
                     client.webSocket(method = HttpMethod.Get, host = "zkillboard.com", port = 8080, path = "/websocket") {
                         send(JSONObject().apply {
