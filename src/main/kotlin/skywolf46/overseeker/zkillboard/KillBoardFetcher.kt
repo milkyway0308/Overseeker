@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 object KillBoardFetcher {
     private val parser = JSONParser()
     private val runner = Executors.newFixedThreadPool(1)
-    private val resolver = Executors.newFixedThreadPool(1)
+    private val resolver = Executors.newFixedThreadPool(10)
     private val listeners = Collections.synchronizedList(mutableListOf<(ResolvedKillData) -> Unit>())
 
     fun initFetcher() {
