@@ -5,6 +5,8 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.http.*
 import io.ktor.websocket.*
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.json.simple.JSONObject
 import org.json.simple.parser.JSONParser
@@ -35,19 +37,21 @@ object KillBoardFetcher {
 
     private fun configureWebSocket(client: HttpClient) {
         runner.execute {
-            runBlocking {
-                client.webSocket(method = HttpMethod.Get, host = "zkillboard.com", port = 8080, path = "/websocket") {
-                    send(JSONObject().apply {
-                        put("action", "sub")
-                        put("channel", "killstream")
-                    }.toJSONString())
-                    while (true) {
-                        val msg = incoming.receive() as? Frame.Text ?: continue
-                        val data = KillData(parser.parse(msg.readText()) as JSONObject)
-                        resolver.execute {
-                            val resolved = data.resolveAll()
-                            listeners.forEach {
-                                it(resolved)
+            kotlin.runCatching {
+                runBlocking {
+                    client.webSocket(method = HttpMethod.Get, host = "zkillboard.com", port = 8080, path = "/websocket") {
+                        send(JSONObject().apply {
+                            put("action", "sub")
+                            put("channel", "killstream")
+                        }.toJSONString())
+                        while (true) {
+                            val msg = incoming.receive() as? Frame.Text ?: continue
+                            val data = KillData(parser.parse(msg.readText()) as JSONObject)
+                            resolver.execute {
+                                val resolved = data.resolveAll()
+                                listeners.forEach {
+                                    it(resolved)
+                                }
                             }
                         }
                     }
