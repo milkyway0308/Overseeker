@@ -86,4 +86,8 @@ object EsiNameFetcher {
             }
         }
     }
+
+    fun getId(name: String): Long {
+        return cachedIds[name] ?: -1
+    }
 }
