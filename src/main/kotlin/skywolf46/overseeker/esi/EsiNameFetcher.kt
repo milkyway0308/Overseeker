@@ -73,7 +73,7 @@ object EsiNameFetcher {
                 return
             lock.write {
                 // Outer for-each
-                array.forEach { k, arr ->
+                array.forEach { _, arr ->
                     if(arr !is JSONArray)
                         return@forEach
                     for(x in arr.fetch()) {
