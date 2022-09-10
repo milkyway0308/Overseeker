@@ -19,7 +19,11 @@ object EsiNameFetcher {
     private const val ESI_GET_ID = "https://esi.evetech.net/latest/universe/ids/?datasource=tranquility"
     private val lock = ReentrantReadWriteLock()
     private val parser = JSONParser()
-    private val client = HttpClient(CIO)
+    private val client = HttpClient(CIO) {
+        engine {
+            requestTimeout = 0L
+        }
+    }
     private val cachedNames = mutableMapOf<Long, String?>()
     private val cachedIds = mutableMapOf<String, Long>()
 
