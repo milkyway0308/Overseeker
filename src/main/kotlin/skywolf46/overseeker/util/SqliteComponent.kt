@@ -1,13 +1,18 @@
 package skywolf46.overseeker.util
 
+import java.lang.reflect.Constructor
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.reflect.KClass
+import kotlin.reflect.full.hasAnnotation
+import kotlin.reflect.full.isSuperclassOf
+import kotlin.reflect.jvm.javaConstructor
+import kotlin.reflect.jvm.jvmErasure
 
-class SqliteComponent<K, V>(val fileName: String) {
+class SqliteComponent(val fileName: String) {
 
     // ----------------------------------------------------
     //             SqliteComponent Implementation
@@ -20,8 +25,16 @@ class SqliteComponent<K, V>(val fileName: String) {
         connection.metaData.driverName
     }
 
-    fun construct(table: String, vararg fields: KClass<*>) {
+    fun construct(table: String, vararg fields: KClass<*>): SqliteTable {
+        return SqliteTable(connection, SqliteTableAttribute(table).apply {
+            // MAGIC
+            // TODO: Add recursive constructor
+            TODO()
+        })
+    }
 
+    fun construct(tableAttribute: SqliteTableAttribute): SqliteTable {
+        TODO()
     }
 
     // ----------------------------------------------------
@@ -29,15 +42,21 @@ class SqliteComponent<K, V>(val fileName: String) {
     // ----------------------------------------------------
 
     companion object {
-        private val tableConstructors = mutableMapOf<Pair<KClass<*>, KClass<*>>, (SqliteComponent<*, *>) -> Unit>()
+        private val tableConstructors = mutableMapOf<Pair<KClass<*>, KClass<*>>, (SqliteComponent) -> Unit>()
         private val sqlFieldDescribers = mutableMapOf<KClass<*>, SqliteFieldDescriber<*>>()
 
-        fun registerConstructor(key: KClass<*>, value: KClass<*>, constructor: (SqliteComponent<*, *>) -> Unit) {
+        fun registerConstructor(key: KClass<*>, value: KClass<*>, constructor: (SqliteComponent) -> Unit) {
             tableConstructors[key to value] = constructor
         }
 
         fun <K : Any> registerSqlFieldDescriber(cls: KClass<K>, describer: SqliteFieldDescriber<K>) {
             sqlFieldDescribers[cls] = describer
+        }
+
+        fun <K : Any> getSqlFieldDescriber(
+            cls: KClass<K>
+        ): SqliteFieldDescriber<K>? {
+            return sqlFieldDescribers[cls] as? SqliteFieldDescriber<K>
         }
 
         init {
@@ -78,6 +97,12 @@ class SqliteComponent<K, V>(val fileName: String) {
     }
 
     // ----------------------------------------------------
+    //         SqliteComponent Annotation Classes
+    // ----------------------------------------------------
+    @Target(AnnotationTarget.CLASS)
+    annotation class SqlSerializable
+
+    // ----------------------------------------------------
     //         SqliteComponent Extension Classes
     // ----------------------------------------------------
 
@@ -104,7 +129,7 @@ class SqliteComponent<K, V>(val fileName: String) {
         fun asSqlConstructString(): String
     }
 
-    abstract class SqliteTableAttribute(val tableName: String) {
+    open class SqliteTableAttribute(val tableName: String) {
         private val fields = linkedMapOf<String, SqliteField>()
 
         fun addField(name: String, cls: KClass<*>, length: Int = -1) {
@@ -113,6 +138,10 @@ class SqliteComponent<K, V>(val fileName: String) {
 
         fun addField(field: SqliteField) {
             fields[field.fieldName] = field
+        }
+
+        fun getFields(): List<Pair<String, SqliteField>> {
+            return fields.entries.map { x -> x.key to x.value }
         }
 
         fun asSqlConstructString(): String {
@@ -133,6 +162,83 @@ class SqliteComponent<K, V>(val fileName: String) {
     //          SqliteComponent Utility Classes
     // ----------------------------------------------------
 
+    open class SqliteTable(protected val connection: Connection, protected val table: SqliteTableAttribute) {
+        private val cachedConstructor = mutableMapOf<KClass<*>, Constructor<*>?>()
+
+        fun findAvailableConstructor(klass: KClass<*>): Constructor<*>? {
+            if (cachedConstructor.containsKey(klass))
+                return cachedConstructor[klass]!!
+            val constructor = klass.constructors.find {
+                val fields = table.getFields()
+                if (fields.size != it.parameters.size)
+                    return@find false
+                val params = it.parameters
+                fields.forEachIndexed { indx, pair ->
+                    if (!pair.second.dataClass.isSuperclassOf(params[indx].type.jvmErasure))
+                        return@find false
+                }
+                return@find true
+            } ?: return cachedConstructor.getOrPut(klass) { null }
+            return cachedConstructor.getOrPut(klass) { constructor.javaConstructor!! }
+        }
+
+        fun <T : Any> selectAll(
+            klass: KClass<T>,
+            order: SqliteOrder = SqliteOrder.NATURAL,
+            orderBy: String? = null
+        ): List<T> {
+            if (checkIsSerializable(klass)) {
+                throw IllegalStateException("Cannot serialize to offered class : Class constructor not compatible with current table")
+            }
+            return connection.prepareStatement("select * from ${table.tableName}").executeQuery().use {
+                getSqlFieldDescriber(klass)?.let { describer ->
+                    // Deserialize with provided describer..
+                    return@use mutableListOf<T>().apply {
+                        while (it.next()) {
+                            this += describer.read(it, AtomicInteger(0))
+                        }
+                    }
+                }
+                return@use mutableListOf<T>().apply {
+                    while (it.next()) {
+                        this += deserializeFromTable(klass, it)
+                    }
+                }
+            }
+        }
+
+        private fun <T : Any> deserializeFromTable(
+            klass: KClass<T>,
+            resultSet: ResultSet,
+            pointer: AtomicInteger = AtomicInteger(0)
+        ): T {
+            val constructor = findAvailableConstructor(klass)
+                ?: throw IllegalStateException("Cannot deserialize data : No compatible constructor")
+            val data = Array<Any?>(constructor.parameterCount) { null }
+            for (x in data.indices) {
+                val paramType = constructor.parameters[x].type.kotlin
+                data[x] = sqlFieldDescribers[paramType]?.read(resultSet, pointer)
+                    ?: deserializeFromTable(paramType, resultSet, pointer)
+            }
+            return constructor.newInstance(*data) as T
+        }
+
+        private fun checkIsSerializable(klass: KClass<*>): Boolean {
+            if (getSqlFieldDescriber(klass) != null) {
+                return true
+            }
+            if (!klass.hasAnnotation<SqlSerializable>()) {
+                return false
+            }
+            return findAvailableConstructor(klass) != null
+        }
+
+    }
+
+    enum class SqliteOrder {
+        NATURAL, REVERSED
+    }
+
     class SimpleKeyValueTable<V : Any>(tableName: String, valueClass: KClass<V>) : SqliteTableAttribute(tableName) {
         init {
             addField(SqlFieldPrimaryIndex("index"))
@@ -147,5 +253,6 @@ class SqliteComponent<K, V>(val fileName: String) {
             return "$fieldName INTEGER PRIMARY KEY AUTOINCREMENT"
         }
     }
+
 
 }
